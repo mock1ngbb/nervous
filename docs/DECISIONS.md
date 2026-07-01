@@ -1,5 +1,8 @@
 # Decisions — why this, not the obvious alternative
 
+This doc covers the infrastructure choices only. For why this page exists at all,
+see the [README](../README.md#why-this-exists).
+
 ## Why Turnstile "Invisible" mode, not "Managed" or "Non-Interactive"
 
 Asked for research (`fedelm`) on this specifically. Cloudflare's three modes:

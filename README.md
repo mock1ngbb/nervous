@@ -1,10 +1,22 @@
 # nervous
 
-A single static page — [Nervous System States & Somatic Experience](site/index.html), a
-mobile-first reference chart on sympathetic/parasympathetic nervous system states —
-served from a Cloudflare Worker at **nervous.mock1ngbb.com**, sitting behind an
-**invisible** Cloudflare Turnstile bot-check. No visible CAPTCHA, no login, no
-Cloudflare Access/Zero Trust identity gate. Just the content, protected quietly.
+A resource I built while learning to actually notice what my body is doing —
+nervous system regulation, interoception, the practice of paying attention to the
+signal underneath the story about the signal. Authenticity is my highest value
+and, I'd say, my nature — everything else I value derives from it, not the other
+way around. In practice that means the moment my nervous system flags a gap
+between what's *lived* and what's *spoken* — mine or someone else's — is
+information, not noise. This page ([site/index.html](site/index.html)) is the map
+I made of that terrain: sympathetic states, the window of tolerance, dorsal vagal
+shutdown, the narrative layer each state gets tagged with, and the ways they route
+into each other depending on which story shows up.
+
+It's served from a Cloudflare Worker at **nervous.mock1ngbb.com**, sitting behind
+an **invisible** Cloudflare Turnstile bot-check. No visible CAPTCHA, no login, no
+Cloudflare Access/Zero Trust identity gate. Just the content, protected quietly —
+which felt like the right shape for something this personal: available, not
+performative, not gated behind a login wall that would turn "here's what I
+learned" into "here's a product."
 
 This repo is both the content and every tool used to build, deploy, and maintain it.
 
@@ -48,9 +60,16 @@ which token does what.
 
 ## Why this exists
 
-Full writeup in [docs/DECISIONS.md](docs/DECISIONS.md), but the short version: the
-page needed to go live without an obtrusive CAPTCHA and without pulling it into the
-account's Cloudflare Access (Zero Trust) setup, which already gates most of
-`*.mock1ngbb.com` by default. So it's a from-scratch Worker: invisible Turnstile,
-verified server-side, backed by a short-lived signed cookie so repeat visits skip
-the challenge entirely.
+**The content:** tracking nervous system states is part of how I get back to
+myself when the gap between what I'm saying and what I'm actually feeling gets
+wide enough to notice. The chart in `site/index.html` is what came out of doing
+that tracking long enough to see the shape of it — what each state actually feels
+like in the body, what narrative it tends to generate, and where it can go next
+depending on which story takes hold. It's a working reference, not a finished
+theory.
+
+**The delivery:** for the infrastructure reasoning — why invisible Turnstile
+instead of a visible CAPTCHA, why a from-scratch Worker instead of folding this
+into the account's existing Cloudflare Access setup — see the full writeup in
+[docs/DECISIONS.md](docs/DECISIONS.md). Short version: it needed to be reachable
+without friction and without turning something personal into something gated.

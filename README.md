@@ -1,5 +1,7 @@
 # nervous
 
+### 🔗 **Live: [nervous.mock1ngbb.com](https://nervous.mock1ngbb.com)**
+
 A resource I built while learning to actually notice what my body is doing —
 nervous system regulation, interoception, the practice of paying attention to the
 signal underneath the story about the signal. Authenticity is my highest value
@@ -11,7 +13,7 @@ I made of that terrain: sympathetic states, the window of tolerance, dorsal vaga
 shutdown, the narrative layer each state gets tagged with, and the ways they route
 into each other depending on which story shows up.
 
-It's served from a Cloudflare Worker at **nervous.mock1ngbb.com**, sitting behind
+It's served from a Cloudflare Worker at **[nervous.mock1ngbb.com](https://nervous.mock1ngbb.com)**, sitting behind
 an **invisible** Cloudflare Turnstile bot-check. No visible CAPTCHA, no login, no
 Cloudflare Access/Zero Trust identity gate. Just the content, protected quietly —
 which felt like the right shape for something this personal: available, not

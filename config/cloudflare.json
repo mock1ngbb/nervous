@@ -1,0 +1,23 @@
+{
+  "account_id": "a62c1c7880b50ac345fc7c2135f6ae84",
+  "account_name": "mock1ng account",
+  "zone_id": "383cf8210a834fefcd9229e975e7c9de",
+  "zone_name": "mock1ngbb.com",
+  "custom_domain": "nervous.mock1ngbb.com",
+  "worker_name": "nervous-system-states",
+  "turnstile": {
+    "widget_name": "nervous-system-states (Spin)",
+    "sitekey": "0x4AAAAAADtrRqqg8PPu3Edz",
+    "mode": "invisible",
+    "domains": ["nervous.mock1ngbb.com", "localhost", "127.0.0.1"]
+  },
+  "siteverify_worker": {
+    "name": "turnstile-siteverify-nervous",
+    "url": "https://turnstile-siteverify-nervous.mock1ng.workers.dev"
+  },
+  "access_bypass_app": {
+    "name": "nervous.mock1ngbb.com public bypass",
+    "domain": "nervous.mock1ngbb.com",
+    "reason": "Account has a wildcard *.mock1ngbb.com Cloudflare Access app that gates every subdomain by default. This app + its single 'bypass' policy for 'everyone' exempts nervous.mock1ngbb.com from that wildcard so the site has no Zero Trust identity gate — bot protection is handled entirely by the Turnstile widget below, not Access."
+  }
+}

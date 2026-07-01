@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nervous System States</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root,[data-theme="light"]{
+  --color-bg:#F5F5F7;--color-surface:#FFFFFF;--color-surface-2:#ECECEF;--color-border:#DADADD;
+  --color-text:#1A1A1D;--color-text-muted:#5A5A63;
+}
+[data-theme="dark"]{
+  --color-bg:#0A0A0B;--color-surface:#111114;--color-surface-2:#17171B;--color-border:#26262C;
+  --color-text:#E8E8EA;--color-text-muted:#8B8B95;
+}
+:root{
+  /* erebus palette (rift-root) — role mapping, kept constant across light/dark */
+  --gold:#F5A524;    /* amber   — anger / activation */
+  --rust:#F07178;    /* rose    — anxiety / alarm */
+  --pink:#C084FC;    /* violet-bright — fear */
+  --green:#A3E635;   /* lime    — excitement / discharge / positive */
+  --teal:#22D3EE;    /* cyan    — window of tolerance / regulated */
+  --blue:#7C3AED;    /* violet-deep — hypoarousal / dorsal vagal / grief */
+  --purple:#A855F7;  /* violet  — temporal narrative / EMDR */
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'DM Sans',sans-serif;background:var(--color-bg);color:var(--color-text);
+  min-height:100vh;padding:1rem;padding-top:3.5rem;
+  display:flex;flex-direction:column;align-items:center;gap:1rem;
+}
+h1{
+  font-size:0.95rem;font-weight:500;color:var(--color-text-muted);letter-spacing:0.06em;
+  text-transform:uppercase;text-align:center;line-height:1.4;
+}
+.doc{width:100%;max-width:1200px;display:flex;flex-direction:column;gap:1rem}
+
+.toggle{
+  position:fixed;top:0.6rem;right:0.6rem;background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:2rem;padding:0.35rem 0.7rem;cursor:pointer;font-size:0.75rem;color:var(--color-text-muted);
+  z-index:10;
+}
+
+/* ---- Zone shell ---- */
+.zone{border-radius:0.75rem;padding:0.9rem;border:1.5px solid var(--zone-c);background:var(--zone-bg)}
+.zone-hyper{--zone-c:var(--gold);--zone-bg:color-mix(in srgb, var(--gold) 6%, var(--color-bg))}
+.zone-window{--zone-c:var(--teal);--zone-bg:color-mix(in srgb, var(--teal) 8%, var(--color-bg))}
+.zone-hypo{--zone-c:var(--blue);--zone-bg:color-mix(in srgb, var(--blue) 6%, var(--color-bg))}
+
+.zone-title{
+  display:block;font-family:'DM Mono',monospace;font-size:0.65rem;letter-spacing:0.12em;
+  color:var(--zone-c);font-weight:500;margin-bottom:0.6rem;
+}
+.band-head{
+  background:color-mix(in srgb, var(--zone-c) 12%, transparent);border:1px solid color-mix(in srgb, var(--zone-c) 25%, transparent);
+  border-radius:0.4rem;padding:0.35rem 0.6rem;text-align:center;font-family:'DM Mono',monospace;
+  font-size:0.65rem;letter-spacing:0.15em;color:var(--zone-c);margin-bottom:0.7rem;
+}
+.substrate-note{font-size:0.75rem;color:var(--color-text-muted);margin-bottom:0.25rem;line-height:1.5}
+.substrate-note.accent{color:var(--zone-c)}
+
+/* ---- Generic card ---- */
+.card-grid{display:grid;grid-template-columns:1fr;gap:0.75rem;margin-bottom:0.75rem}
+.state-card,.hypo-card,.path-card{
+  background:var(--color-surface);border:1.5px solid var(--card-c);border-radius:0.6rem;
+  padding:0.85rem;display:flex;flex-direction:column;gap:0.7rem;
+}
+.state-card h3,.hypo-card h3{
+  font-family:'DM Mono',monospace;font-size:0.85rem;font-weight:600;letter-spacing:0.03em;
+  color:var(--card-c);text-align:center;background:color-mix(in srgb, var(--card-c) 12%, transparent);
+  border-radius:0.5rem;padding:0.5rem;margin:-0.85rem -0.85rem 0 -0.85rem;
+}
+.field h4{
+  font-family:'DM Mono',monospace;font-size:0.68rem;font-weight:500;color:var(--color-text);
+  margin-bottom:0.3rem;
+}
+.field p{font-size:0.78rem;color:var(--color-text-muted);line-height:1.55;margin-bottom:0.15rem}
+.field p.quote{font-style:italic;font-weight:500}
+.field p:last-child{margin-bottom:0}
+
+.badges{display:flex;flex-wrap:wrap;gap:0.4rem}
+.badge{
+  font-family:'DM Mono',monospace;font-size:0.65rem;padding:0.25rem 0.6rem;border-radius:0.3rem;
+  border:1px solid; white-space:nowrap;
+}
+.badge-neg{color:var(--rust);border-color:var(--rust);background:color-mix(in srgb, var(--rust) 20%, transparent)}
+.badge-approach{color:var(--gold);border-color:var(--gold);background:color-mix(in srgb, var(--gold) 15%, transparent)}
+.badge-avoid{color:var(--blue);border-color:var(--blue);background:color-mix(in srgb, var(--blue) 15%, transparent)}
+.badge-pos{color:var(--green);border-color:var(--green);background:color-mix(in srgb, var(--green) 18%, transparent)}
+
+.tagline{font-family:'DM Mono',monospace;font-size:0.68rem;font-weight:500}
+
+.callout{
+  border:1px solid color-mix(in srgb, var(--green) 40%, transparent);border-radius:0.4rem;
+  padding:0.6rem;background:var(--color-bg);
+}
+.callout h5{font-size:0.68rem;color:var(--green);font-weight:500;margin-bottom:0.3rem}
+.callout p{font-size:0.75rem;color:var(--color-text-muted);line-height:1.5;margin-bottom:0.1rem}
+
+/* state accent colors */
+.state-anger{--card-c:var(--gold)}
+.state-anxiety{--card-c:var(--rust)}
+.state-fear{--card-c:var(--pink)}
+.state-excite{--card-c:var(--green)}
+
+/* ---- resolution paths ---- */
+.resolution-band{margin-top:0.4rem}
+.resolution-title{
+  font-family:'DM Mono',monospace;font-size:0.68rem;letter-spacing:0.08em;color:var(--green);
+  font-weight:500;margin-bottom:0.6rem;display:block;
+}
+.path-grid{display:grid;grid-template-columns:1fr;gap:0.75rem}
+.path-card{border-style:dashed}
+.path-a{--card-c:var(--blue)}
+.path-b{--card-c:var(--gold)}
+.path-card h4{
+  font-family:'DM Mono',monospace;font-size:0.78rem;font-weight:500;color:var(--card-c);margin-bottom:0.1rem;
+}
+.path-card p{font-size:0.76rem;color:var(--color-text-muted);line-height:1.5}
+.path-card p.exit{color:var(--green)}
+.path-card p.trigger{font-style:italic;color:var(--card-c)}
+
+/* ---- transition note ---- */
+.transition-note{
+  align-self:center;font-family:'DM Mono',monospace;font-size:0.68rem;text-align:center;
+  padding:0.4rem 0.9rem;border-radius:2rem;border:1px dashed var(--tn-c);color:var(--tn-c);
+}
+
+/* ---- window zone grid ---- */
+.window-body{
+  background:var(--color-surface);border:1.2px solid var(--teal);border-radius:0.5rem;
+  padding:0.85rem;display:grid;grid-template-columns:1fr;gap:0.9rem;
+}
+.window-body h4{
+  font-family:'DM Mono',monospace;font-size:0.68rem;font-weight:500;color:var(--color-text);margin-bottom:0.3rem;
+}
+.window-body p{font-size:0.78rem;color:var(--color-text-muted);line-height:1.55;margin-bottom:0.15rem}
+.window-body p.pos{color:var(--green)}
+.window-body p.act{color:var(--gold)}
+.window-footnotes{display:flex;flex-direction:column;gap:0.4rem;margin-top:0.75rem}
+.window-footnotes p{font-size:0.72rem;font-style:italic;color:var(--teal);line-height:1.5}
+
+/* ---- hypoarousal grid ---- */
+.hypo-grid{display:grid;grid-template-columns:1fr;gap:0.75rem}
+.hypo-freeze{--card-c:var(--blue)}
+.hypo-temporal{--card-c:var(--purple)}
+.warn{color:var(--gold)}
+.narrative-list{display:flex;flex-direction:column;gap:0.35rem;margin:0.4rem 0}
+.narrative-list .row{display:flex;flex-wrap:wrap;gap:0.4rem;font-size:0.76rem;line-height:1.5}
+.narrative-list .label{font-family:'DM Mono',monospace;font-weight:500;min-width:6rem}
+.exit-steps{display:flex;flex-direction:column;gap:0.3rem;margin:0.4rem 0}
+.exit-steps p{font-size:0.76rem;line-height:1.5}
+.exit-steps p.act{color:var(--gold)}
+.exit-steps p.reg{color:var(--green)}
+
+/* ---- legend ---- */
+.legend{
+  display:flex;flex-wrap:wrap;gap:0.6rem 1rem;justify-content:center;padding:0.6rem;
+  border-radius:0.5rem;background:var(--color-surface-2);width:100%;max-width:1200px;
+}
+.legend-item{display:flex;align-items:center;gap:0.35rem;font-size:0.68rem;color:var(--color-text-muted)}
+.legend-dot{width:8px;height:8px;border-radius:50%;flex:none}
+
+/* ══════════════════════════════════════
+   BREAKPOINTS — mobile-first: base = 1 column stacked.
+   ══════════════════════════════════════ */
+@media (min-width: 640px){
+  .card-grid{grid-template-columns:repeat(2,1fr)}
+  .path-grid{grid-template-columns:repeat(2,1fr)}
+  .window-body{grid-template-columns:repeat(2,1fr)}
+  h1{font-size:1.1rem}
+}
+@media (min-width: 900px){
+  .hypo-grid{grid-template-columns:1fr 1.05fr}
+}
+@media (min-width: 1000px){
+  .card-grid{grid-template-columns:repeat(4,1fr)}
+  .window-body{grid-template-columns:repeat(4,1fr)}
+  .doc{gap:1.5rem}
+  body{padding:2rem}
+}
+</style>
+</head>
+<body>
+<button class="toggle" onclick="toggle()" id="toggleBtn">&#9728; light</button>
+<h1>Nervous System States &amp; Somatic Experience</h1>
+<div class="doc">
+
+  <!-- ══════ ZONE 1: HYPERAROUSAL / SYMPATHETIC ══════ -->
+  <section class="zone zone-hyper">
+    <span class="zone-title">HYPERAROUSAL — ABOVE WINDOW OF TOLERANCE</span>
+    <div class="band-head">SYMPATHETIC NERVOUS SYSTEM — mobilization / fight / flight</div>
+    <p class="substrate-note">All four states below share the same sympathetic substrate (adrenaline + norepinephrine + cortisol sustain). What differs:</p>
+    <p class="substrate-note accent">valence (threat vs. opportunity) &middot; direction of charge (approach vs. avoidance) &middot; temporal narrative (past / present / future / anticipated good)</p>
+
+    <div class="card-grid">
+      <!-- ANGER / RAGE -->
+      <article class="state-card state-anger">
+        <h3>Anger / Rage</h3>
+        <div class="field">
+          <h4>Neurochemistry</h4>
+          <p>Norepinephrine dominant &rarr; approach bias</p>
+          <p>Adrenaline activation, high charge</p>
+          <p>Cortisol = sustain if suppressed/chronic</p>
+        </div>
+        <div class="field">
+          <h4>Somatic texture</h4>
+          <p>Heat in face, neck, chest</p>
+          <p>Chest expands outward, jaw clenches</p>
+          <p>Hands close, body presses forward</p>
+          <p>Expanded high-charge (approach)</p>
+          <p>Rage = brakes offline, same system</p>
+        </div>
+        <div class="field">
+          <h4>Discharge</h4>
+          <p style="color:var(--green)">Physical exertion, yelling (safely)</p>
+          <p style="color:var(--green)">Vigorous movement, contact sport</p>
+          <p style="color:var(--green)">Completing a confrontation</p>
+        </div>
+        <div class="field">
+          <h4>Narrative layer</h4>
+          <p class="quote" style="color:var(--gold)">&ldquo;Something must be stopped&rdquo;</p>
+          <p>Present + forward. Action demanded.</p>
+          <p>Injustice / boundary violation signal.</p>
+        </div>
+        <div class="field">
+          <h4>Valence / Direction</h4>
+          <div class="badges">
+            <span class="badge badge-neg">NEGATIVE</span>
+            <span class="badge badge-approach">APPROACH &rarr;</span>
+          </div>
+        </div>
+        <div class="field">
+          <p style="color:var(--gold)">Most likely to discharge if action available.</p>
+          <p>Unresolved &rarr; chronic cortisol load.</p>
+          <p>Suppressed anger &rarr; dorsal vagal collapse or somatization over time.</p>
+          <p class="quote">Reappraisal target: justice / agency, not calming down.</p>
+        </div>
+        <p class="tagline" style="color:var(--gold)">&uarr; sympathetic, expanded, threat-valence</p>
+      </article>
+
+      <!-- ANXIETY -->
+      <article class="state-card state-anxiety">
+        <h3>Anxiety</h3>
+        <div class="field">
+          <h4>Neurochemistry</h4>
+          <p>Adrenaline + cortisol (sustained)</p>
+          <p>Simulated threat, no real danger present</p>
+          <p>Often frozen past fear projected forward</p>
+        </div>
+        <div class="field">
+          <h4>Somatic texture</h4>
+          <p>Chest tight, shallow fast breath</p>
+          <p>Cold/clammy hands, shoulders raised</p>
+          <p>Racing thoughts, scanning/vigilance</p>
+          <p>Contracted high-charge (avoidance)</p>
+          <p>No clear motor act to discharge into</p>
+        </div>
+        <div class="field">
+          <h4>Discharge</h4>
+          <p style="color:var(--green)">Movement + cognitive close</p>
+          <p style="color:var(--green)">Long exhale, grounding</p>
+          <p style="color:var(--green)">Somatic punctuation + reappraisal</p>
+        </div>
+        <div class="field">
+          <h4>Narrative layer</h4>
+          <p class="quote" style="color:var(--rust)">&ldquo;Something bad is coming&rdquo; (future)</p>
+          <p>Forward-facing. Anticipatory threat sim.</p>
+          <p>May be unresolved present/past fear rerouted.</p>
+        </div>
+        <div class="field">
+          <h4>Valence / Direction</h4>
+          <div class="badges">
+            <span class="badge badge-neg">NEGATIVE</span>
+            <span class="badge badge-avoid">&larr; AVOIDANCE</span>
+          </div>
+        </div>
+        <div class="field">
+          <p style="color:var(--rust)">Arousal congruent with excitement — only valence differs (threat vs. opportunity).</p>
+          <p>Reappraisal to excitement works because arousal level is already the same.</p>
+          <p class="quote">&ldquo;Calm down&rdquo; is harder — requires arousal shift (high&rarr;low) not just valence shift.</p>
+        </div>
+        <p class="tagline" style="color:var(--rust)">&uarr; sympathetic, contracted, threat-valence</p>
+      </article>
+
+      <!-- FEAR -->
+      <article class="state-card state-fear">
+        <h3>Fear (Acute)</h3>
+        <div class="field">
+          <h4>Neurochemistry</h4>
+          <p>Adrenaline spike — fast onset, fast peak</p>
+          <p>Cortisol follows if threat persists</p>
+          <p>Hardest + shortest — needs fast resolution</p>
+        </div>
+        <div class="field">
+          <h4>Somatic texture</h4>
+          <p>Tunnel vision, stomach drops</p>
+          <p>Muscles lock or mobilize instantly</p>
+          <p>Breath stops briefly, body pulls inward</p>
+          <p>Contracted high-charge (exit/freeze)</p>
+          <p>Hits harder than anxiety, shorter duration</p>
+        </div>
+        <div class="field">
+          <h4>Discharge</h4>
+          <p style="color:var(--green)">Completing the motor act (fight/run)</p>
+          <p style="color:var(--green)">Shaking, trembling after threat passes</p>
+          <p style="color:var(--green)">EMDR bilateral stimulation</p>
+        </div>
+        <div class="field">
+          <h4>Narrative layer</h4>
+          <p class="quote" style="color:var(--pink)">&ldquo;Something bad is here&rdquo; (present)</p>
+          <p>Real-time threat computation on NOW.</p>
+          <p>Most &ldquo;raw&rdquo; — least narrative overlay.</p>
+        </div>
+        <div class="field">
+          <h4>Valence / Direction</h4>
+          <div class="badges">
+            <span class="badge badge-neg">NEGATIVE</span>
+            <span class="badge badge-avoid">&larr; AVOIDANCE</span>
+          </div>
+        </div>
+        <div class="field">
+          <p>Most likely to collapse into dorsal vagal if motor act is blocked (inescapable threat).</p>
+          <p>Trauma = fear response that couldn&rsquo;t complete. Stored as charge in the body.</p>
+          <p class="quote">Note: excitement &asymp; fear but with positive valence (opportunity not threat).</p>
+        </div>
+        <p class="tagline" style="color:var(--pink)">&uarr; sympathetic, contracted, threat-valence</p>
+      </article>
+
+      <!-- EXCITEMENT -->
+      <article class="state-card state-excite">
+        <h3>Excitement</h3>
+        <div class="field">
+          <h4>Neurochemistry</h4>
+          <p>Adrenaline + dopamine (anticipation)</p>
+          <p>Nearly identical profile to anxiety</p>
+          <p>Dopamine = &ldquo;approaching reward&rdquo; signal</p>
+        </div>
+        <div class="field">
+          <h4>Somatic texture</h4>
+          <p>Chest open, buzzing / tingling quality</p>
+          <p>Fast heart rate, elevated breath</p>
+          <p>&ldquo;Butterflies&rdquo; — same as anxiety</p>
+          <p style="color:var(--green)">Expands outward (vs. anxiety contracts)</p>
+          <p>Body leans forward, alert + open</p>
+        </div>
+        <div class="field">
+          <h4>Discharge / Resolution</h4>
+          <p style="color:var(--green)">Outcome occurs &rarr; charge completes naturally</p>
+          <p style="color:var(--green)">Anticipation resolves into experience</p>
+          <p>But: blocked/cancelled &rarr; see paths below &darr;</p>
+        </div>
+        <div class="field">
+          <h4>Narrative layer</h4>
+          <p class="quote" style="color:var(--green)">&ldquo;Something good is coming&rdquo; (future)</p>
+          <p>Forward-facing. Opportunity mindset.</p>
+          <p>Same temporal slot as anxiety (future).</p>
+        </div>
+        <div class="field">
+          <h4>Valence / Direction</h4>
+          <div class="badges">
+            <span class="badge badge-pos">POSITIVE</span>
+            <span class="badge badge-approach">APPROACH &rarr;</span>
+          </div>
+        </div>
+        <div class="callout">
+          <h5>WHY IT FEELS LIKE ANXIETY</h5>
+          <p>Arousal identical. Appraisal different.</p>
+          <p>Threat mindset &rarr; anxiety. Opportunity &rarr; excitement.</p>
+          <p>Reappraisal works because arousal is already matched.</p>
+        </div>
+        <div class="field">
+          <h4>If blocked / cancelled / postponed</h4>
+          <p style="color:var(--rust)">&rarr; Narrative: &ldquo;something good was taken&rdquo; — Grief (dorsal collapse) OR anger (re-mobilize)</p>
+        </div>
+      </article>
+    </div>
+
+    <!-- Cancellation / Postponement resolution paths -->
+    <div class="resolution-band">
+      <span class="resolution-title">EXCITEMENT BLOCKED: HOW IT RESOLVES DEPENDS ON THE NARRATIVE</span>
+      <div class="path-grid">
+        <div class="path-card path-a">
+          <h4>Path A — Grief / Dorsal Collapse</h4>
+          <p>Narrative: &ldquo;that good thing is now gone / lost&rdquo; &rarr; past-facing</p>
+          <p>Charge finds no forward motion. System has no motor act to complete.</p>
+          <p>Sympathetic energy collapses inward &rarr; dorsal vagal shutdown, heaviness, numb, flat.</p>
+          <p class="exit">Exit: activate first (sympathetic) &rarr; then regulate down to window.</p>
+          <p class="trigger">Trigger: &ldquo;it&rsquo;s over / it won&rsquo;t happen / I can&rsquo;t change it&rdquo; — helplessness framing.</p>
+        </div>
+        <div class="path-card path-b">
+          <h4>Path B — Anger / Re-mobilization</h4>
+          <p>Narrative: &ldquo;that good thing was taken / someone did this&rdquo; &rarr; present + injustice-facing</p>
+          <p>Charge converts to anger. Sympathetic stays active but shifts to approach/fight mode.</p>
+          <p>Body presses forward rather than collapsing. Energy has a target.</p>
+          <p class="exit">Discharge: action, confrontation, physical exertion.</p>
+          <p class="trigger">Trigger: injustice appraisal. &ldquo;This was done TO me&rdquo; &rarr; boundary violation signal.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="transition-note" style="--tn-c:var(--teal)">exhale + ground &rarr; window</div>
+
+  <!-- ══════ ZONE 2: WINDOW OF TOLERANCE ══════ -->
+  <section class="zone zone-window">
+    <span class="zone-title">WINDOW OF TOLERANCE — REGULATED</span>
+    <div class="band-head">PARASYMPATHETIC — VENTRAL VAGAL BRANCH — safe + social</div>
+
+    <div class="window-body">
+      <div>
+        <h4>Somatic texture</h4>
+        <p>Open chest, warmth, breath with depth</p>
+        <p>Sense of space and capacity</p>
+        <p>Can think AND feel simultaneously</p>
+        <p>World reads expansive, not threatening</p>
+      </div>
+      <div>
+        <h4>What the window IS</h4>
+        <p>Not absence of stress — active safety state</p>
+        <p>Where full function and processing lives</p>
+        <p>Widens through repeated return from dysreg.</p>
+        <p>Co-regulation (another person) expands fastest</p>
+      </div>
+      <div>
+        <h4>Entry from hyperarousal</h4>
+        <p class="pos">Long exhale (exhale longer than inhale)</p>
+        <p class="pos">Activates vagal tone — not metaphor</p>
+        <p class="pos">Grounding, social signal, slow discharge</p>
+        <p class="pos">Cognitive close + somatic punctuation</p>
+      </div>
+      <div>
+        <h4>Entry from hypoarousal</h4>
+        <p class="act">Must pass through sympathetic first</p>
+        <p class="act">Cannot go directly — cannot skip this</p>
+        <p class="pos">Activate: slap legs, cold water, loud music</p>
+        <p class="pos">Then regulate DOWN from sympathetic</p>
+      </div>
+    </div>
+
+    <div class="window-footnotes">
+      <p>Ventral vagal = one branch of vagus nerve. Safe &ne; calm. Calm can be shutdown (dorsal vagal). Safety is present + connected + able to respond not react.</p>
+      <p>This is the only state where somatic/EMDR processing can actually complete. Both excitement resolution and grief processing require returning here first.</p>
+      <p>Reappraisal (anxiety &rarr; excitement) is the fastest cognitive lever to shift valence without changing arousal level — meeting the body where it already is.</p>
+      <p>Narrative tag: grounded present. No temporal threat story. The raw signal has no timestamp — the story always applies it.</p>
+    </div>
+  </section>
+
+  <div class="transition-note" style="--tn-c:var(--gold)">activate first &rarr; then regulate down</div>
+
+  <!-- ══════ ZONE 3: HYPOAROUSAL / DORSAL VAGAL ══════ -->
+  <section class="zone zone-hypo">
+    <span class="zone-title">HYPOAROUSAL — BELOW WINDOW OF TOLERANCE</span>
+    <div class="band-head">PARASYMPATHETIC — DORSAL VAGAL BRANCH — shutdown / freeze / collapse</div>
+
+    <div class="hypo-grid">
+      <article class="hypo-card hypo-freeze">
+        <h3>Freeze / Shutdown</h3>
+        <div class="field">
+          <h4>Neurochemistry</h4>
+          <p>Vagal brake (acetylcholine) — dumps activation instead of burning it</p>
+          <p>Opioid system may engage (numbing, dissociation)</p>
+          <p>Cortisol chronically elevated from prior sustained sympathetic load</p>
+        </div>
+        <div class="field">
+          <h4>Somatic texture</h4>
+          <p>Heavy, numb, foggy, flat affect, collapsed</p>
+          <p>Dissociated — world feels unreal or distant</p>
+          <p>Feels like calm but is shutdown — opposite of safe</p>
+          <p>Pushing on a wall — effort produces nothing</p>
+        </div>
+        <div class="field">
+          <h4>Narrative layer</h4>
+          <p class="quote" style="color:var(--blue)">&ldquo;Nothing matters / I can&rsquo;t / it&rsquo;s over&rdquo; — helplessness, futility</p>
+          <p>Grief collapses here when sympathetic charge finds no discharge.</p>
+          <p>Excitement blocked with helplessness narrative also routes here.</p>
+          <p class="warn">WARNING: trying to &ldquo;calm down&rdquo; from here deepens shutdown.</p>
+          <p class="warn">Calming = hyperarousal tool. Activation = hypoarousal tool.</p>
+          <p style="color:var(--blue)">Also parasympathetic — critical: parasympathetic &ne; safe.</p>
+          <p style="color:var(--blue)">Dorsal vagal is older, evolutionary &ldquo;play dead&rdquo; branch.</p>
+        </div>
+      </article>
+
+      <article class="hypo-card hypo-temporal">
+        <h3>Temporal Narrative Map + Exit Path</h3>
+        <div class="field">
+          <h4>Same body signal — narrative is the temporal tag</h4>
+          <div class="narrative-list">
+            <div class="row"><span class="label" style="color:var(--rust)">Anxiety</span><span>&ldquo;something bad is coming&rdquo; (future, negative)</span></div>
+            <div class="row"><span class="label" style="color:var(--pink)">Fear</span><span>&ldquo;something bad is here&rdquo; (present, negative)</span></div>
+            <div class="row"><span class="label" style="color:var(--blue)">Grief</span><span>&ldquo;something good is gone&rdquo; (past, loss)</span></div>
+            <div class="row"><span class="label" style="color:var(--green)">Excitement</span><span>&ldquo;something good is coming&rdquo; (future, positive)</span></div>
+            <div class="row"><span class="label" style="color:var(--gold)">Anger</span><span>&ldquo;something must change now&rdquo; (present, injustice)</span></div>
+          </div>
+          <p>Excitement blocked &rarr; grief (collapse) OR anger (re-mobilize) depending on narrative.</p>
+        </div>
+        <div class="field">
+          <h4>Exit path from hypoarousal (cannot skip)</h4>
+          <div class="exit-steps">
+            <p class="act">Step 1 — Activate: slap legs, cold water, loud music, jumping</p>
+            <p class="act">Step 2 — Land in sympathetic (on purpose — this is correct)</p>
+            <p class="reg">Step 3 — Regulate down: long exhale, grounding, slow breath</p>
+            <p class="reg">Step 4 — Arrive at ventral vagal window</p>
+          </div>
+          <p>Skipping steps 1+2 = pushing on the wall. Will not move.</p>
+        </div>
+        <div class="field">
+          <h4>EMDR note</h4>
+          <p style="color:var(--purple)">Works on the body-level charge before the narrative. The raw signal was never temporally tagged — only the story applies the timestamp.</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:var(--gold)"></span>sympathetic / hyperarousal</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>excitement / opportunity</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--teal)"></span>ventral vagal / regulated</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--blue)"></span>dorsal vagal / hypoarousal</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--pink)"></span>discharge / resolution</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--purple)"></span>grief/trauma implications</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--rust)"></span>narrative layer</div>
+  </div>
+
+</div>
+<script>
+function toggle(){const h=document.documentElement;const t=h.getAttribute('data-theme');const n=t==='dark'?'light':'dark';h.setAttribute('data-theme',n);document.getElementById('toggleBtn').innerHTML=n==='dark'?'&#9728; light':'&#9790; dark';}
+</script>
+</body>
+</html>

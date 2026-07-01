@@ -1,0 +1,24 @@
+name = "nervous-system-states"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+routes = [
+  { pattern = "nervous.mock1ngbb.com", custom_domain = true }
+]
+
+# challenge.html is bundled as a text import (see src/index.js) — it's
+# gating logic markup, not a public static asset, so it doesn't live under
+# [assets].directory.
+rules = [
+  { type = "Text", globs = ["**/challenge.html"], fallthrough = true },
+]
+
+[assets]
+directory = "../site"
+binding = "ASSETS"
+# Without this, Cloudflare serves matching static asset paths (like "/")
+# directly from the edge, bypassing this Worker's fetch() handler entirely —
+# which means the Turnstile/cookie gate never runs at all. Confirmed live
+# during setup: the real page was served to a cookie-less request with none
+# of this Worker's response headers present. See docs/MAINTENANCE.md#known-quirks.
+run_worker_first = true

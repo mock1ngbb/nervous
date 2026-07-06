@@ -1,5 +1,11 @@
 import CHALLENGE_HTML_TEMPLATE from "./challenge.html";
 
+// Deliberate no-op comment (2026-07-06): proving the Cicada CI/CD pipeline
+// (cicd-intake -> cicd-queue -> deploy) actually deploys this repo end-to-end
+// on a push to main, matching this file's watch_paths entry in
+// .bifrost/deploy-manifest.json. See "Why the Cicada CI/CD manifest isn't
+// fully trusted yet" in docs/DECISIONS.md.
+//
 // See docs/ARCHITECTURE.md for the full request-flow diagram and
 // docs/DECISIONS.md for why each of these choices was made — including why
 // this Worker calls Cloudflare's siteverify endpoint directly instead of

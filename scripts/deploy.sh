@@ -45,12 +45,17 @@ echo
 echo "==> Checking TURNSTILE_SECRET_KEY"
 # The Worker calls Cloudflare's siteverify endpoint directly (see
 # DECISIONS.md) and needs its own copy of the Turnstile widget secret. Unlike
-# COOKIE_SECRET, this can't be freshly generated — it's re-sourced from `bf`,
-# which is the durable copy (never written to disk in this repo). If a
-# future deploy target is missing it, this heals it the same idempotent way
-# COOKIE_SECRET heals above, instead of requiring a manual, easy-to-forget
-# step — this exact gap (a Worker missing its Turnstile secret with no
-# scripted recovery) contributed to the 2026-07 outage.
+# COOKIE_SECRET, this can't be freshly generated — it's re-sourced from `bf`
+# under NERVOUS_TURNSTILE_SECRET_KEY (NOT the generic `TURNSTILE_SECRET_KEY`
+# name — bf/BIFROST_KV is a flat, non-namespaced store, and the generic name
+# was already claimed by a shared/unrelated widget used by other projects on
+# this account. Confirmed live 2026-07-06: `bf get TURNSTILE_SECRET_KEY`
+# silently returned that OTHER widget's secret, real visitors got a clean 403
+# from a healthy-looking pipeline, and the only way to catch it was a human
+# testing in a real, non-automated browser — see docs/MAINTENANCE.md. Using
+# a project-prefixed key name here is what actually prevents recurrence, not
+# just documenting the risk). If a future deploy target is missing the
+# secret, this heals it the same idempotent way COOKIE_SECRET heals above.
 has_ts_secret=$(cd worker && npx wrangler secret list --name "$WORKER_NAME" 2>/dev/null \
   | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(s['name']=='TURNSTILE_SECRET_KEY' for s in d) else 'no')" 2>/dev/null || echo "no")
 
@@ -58,7 +63,7 @@ if [ "$has_ts_secret" = "yes" ]; then
   echo "    TURNSTILE_SECRET_KEY already set — leaving it alone."
 else
   echo "    TURNSTILE_SECRET_KEY missing — re-sourcing from bf and setting it now."
-  cf_token TURNSTILE_SECRET_KEY | (cd worker && npx wrangler secret put TURNSTILE_SECRET_KEY --name "$WORKER_NAME")
+  cf_token NERVOUS_TURNSTILE_SECRET_KEY | (cd worker && npx wrangler secret put TURNSTILE_SECRET_KEY --name "$WORKER_NAME")
 fi
 
 echo

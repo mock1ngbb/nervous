@@ -23,6 +23,24 @@ token is missing or broken — this account's tokens are split narrowly by purpo
 and the fix is almost always "use the more specific token," not "get a new token."
 Check `docs/MAINTENANCE.md#secrets` above before concluding anything is missing.
 
+**`bf`/BIFROST_KV is a flat, non-namespaced key store shared across every
+project on this machine.** `TURNSTILE_SECRET_KEY` is a generic enough name that
+another project's Turnstile widget secret (a shared widget called "bifrost
+veilgate," used by `suno-forge`/`forge-anvil` and several `*.mock1ngbb.com`
+subdomains) had already claimed it. This repo's own setup script
+(`setup-turnstile.sh`) deliberately never writes the widget secret to `bf` — so
+this repo's `bf get TURNSTILE_SECRET_KEY` was silently reading a *different
+project's* secret the whole time, not a stale copy of its own. Confirmed live
+2026-07-06: a script-level "heal" that pulled from that generic name deployed
+the wrong secret, and it looked completely healthy (`scripts/verify.sh` still
+passed, since a bogus-token 403 doesn't distinguish "wrong secret" from
+"secret correctly rejected a bad token") — only a real, non-automated browser
+surfaced it. Fix: this repo's actual secret lives under **`NERVOUS_TURNSTILE_SECRET_KEY`**
+in `bf` (project-prefixed, not the generic name), which is what
+`scripts/deploy.sh`'s heal-check reads. **Never reuse the bare
+`TURNSTILE_SECRET_KEY` name for this repo's own secret again** — that name
+belongs to the shared veilgate widget, not to `nervous`.
+
 ## Rotating `COOKIE_SECRET`
 
 Rotating it immediately invalidates every visitor's current `ns_verified` cookie —

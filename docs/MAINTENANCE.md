@@ -155,12 +155,24 @@ permission and isn't Chrome. It will *not* pass the actual Turnstile challenge
   "correctly rejected a bad token."** POSTing a bogus token to `/__verify`
   gets a 403 (or a fail-open 200) *regardless* of whether
   `TURNSTILE_SECRET_KEY` is right — Cloudflare's siteverify returns
-  `success: false` for a malformed token either way. The only signal that can
-  actually discriminate the two is the `error-codes` array in siteverify's
-  response (`invalid-input-secret`/`missing-input-secret` vs. everything
-  else), which is why `GET /__health` exists as a dedicated endpoint (see
-  "Why handleVerify is four-way, not three" in [DECISIONS.md](DECISIONS.md))
-  — it's the only automated check that would have caught the 2026-07-06
-  wrong-secret incident. Any future health/smoke check added to this repo
-  should read `/__health`'s `gate`/`reason` fields, not infer correctness
-  from an HTTP status code on `/__verify`.
+  `success: false` for a malformed token either way. This bit us directly:
+  right after the 2026-07-06 siteverify collapse, the `TURNSTILE_SECRET_KEY`
+  value sitting in `bf` (Bifrost secrets) did not match the widget's actual
+  live secret (confirmed by fetching the widget's config directly,
+  `GET /accounts/{account}/challenges/widgets/{sitekey}`, which returns the
+  secret in plaintext) — every real visitor's genuinely-valid token was
+  rejected with a clean 403 while `scripts/verify.sh`'s bogus-token check
+  kept passing, since it can't distinguish the two cases. The signal that
+  *can* discriminate them is the `error-codes` array in siteverify's response
+  (`invalid-input-secret`/`missing-input-secret` vs. everything else), which
+  is why `GET /__health` exists as a dedicated endpoint (see "Why handleVerify
+  is four-way, not three" in [DECISIONS.md](DECISIONS.md)) and is what
+  `scripts/verify.sh` now checks instead. Any future health/smoke check added
+  to this repo should read `/__health`'s `gate`/`reason` fields, not infer
+  correctness from an HTTP status code on `/__verify`. The one thing
+  `/__health` still can't catch — a sitekey and secret that are each
+  individually valid but belong to two *different* widgets — is covered by
+  `verify.sh`'s atomic-pair check (step 4); beyond that, a real,
+  non-automated browser remains the only full end-to-end proof (Turnstile
+  refuses to resolve for headless/automated test browsers — see "Testing the
+  real challenge" above).

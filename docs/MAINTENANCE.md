@@ -135,3 +135,24 @@ permission and isn't Chrome. It will *not* pass the actual Turnstile challenge
   `onTsSuccess` must call `turnstile.reset()` (not just retry the same fetch)
   on any failure — reusing a spent token will only ever fail again. This is
   why the retry logic there is `reset()` + backoff, not a bare fetch retry.
+- **`scripts/verify.sh`'s bogus-token check proves siteverify is *reachable*,
+  not that `TURNSTILE_SECRET_KEY` is *correct*.** Cloudflare's siteverify
+  endpoint returns `success: false` (→ our 403) for a malformed/bogus token
+  regardless of whether the secret matches the sitekey — so a passing
+  `verify.sh` run can still mean real visitors are being rejected if the
+  secret itself is wrong. This happened immediately after the 2026-07-06
+  siteverify collapse: the `TURNSTILE_SECRET_KEY` value that had been sitting
+  in `bf` (Bifrost secrets) did not match the widget's actual live secret
+  (different value entirely — confirmed by fetching the widget's config
+  directly, `GET /accounts/{account}/challenges/widgets/{sitekey}`, which
+  returns the secret in plaintext). Every real visitor's genuinely-valid
+  token was rejected with a clean 403, which looks identical to the original
+  black-screen incident from the outside despite being a completely different
+  cause (wrong secret vs. missing backend). **If `verify.sh` passes but a
+  real browser still can't get through, don't trust `bf`'s copy of
+  `TURNSTILE_SECRET_KEY` blindly** — re-fetch it from the live widget config
+  and compare before assuming the secret is correct. There is no automated
+  way to catch this from this repo alone: Turnstile is designed to refuse to
+  resolve for headless/automated test browsers (see "Testing the real
+  challenge" above), so a real, non-automated browser check is the only way
+  to catch a wrong-but-well-formed secret.

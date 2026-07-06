@@ -16,7 +16,7 @@
         "bundle_path": "worker/src/index.js"
       },
       "health_check": {
-        "url": "https://nervous.mock1ngbb.com/",
+        "url": "https://nervous.mock1ngbb.com/__health",
         "timeout_seconds": 30,
         "retry_count": 3,
         "expected_status": 200

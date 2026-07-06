@@ -66,6 +66,80 @@ static file, served via the `ASSETS` binding
 (`env.ASSETS.fetch(request)`) when the visitor is verified. Content edits are now
 just editing HTML. The Worker script only owns the challenge/cookie logic.
 
+## Why handleVerify is four-way, not three — and why /__health exists
+
+The three-way fail-open design (see "Why `handleVerify` fails open when
+siteverify is unreachable" below) had a residual bug: Cloudflare's siteverify
+returns `success: false` both when the *token* is bad and when the *secret*
+is wrong (`error-codes` containing `invalid-input-secret` /
+`missing-input-secret`). The original code collapsed both into the same
+403 fail-**closed** response — meaning if `TURNSTILE_SECRET_KEY` were ever
+wrong again (exactly what happened right after the siteverify collapse, see
+docs/MAINTENANCE.md), a real visitor holding a genuinely valid token would
+still get fail-closed, contradicting the whole point of failing open.
+
+`handleVerify` now inspects `error-codes` and branches four ways:
+
+1. `success: true` → issue the cookie (unchanged).
+2. A **token-side** code (`invalid-input-response`, `timeout-or-duplicate`,
+   `missing-input-response`, `bad-request`) → 403, fail **closed**. The token
+   itself was bad; this is the only case that should ever reach a visitor as
+   a rejection.
+3. A **secret-side** code (`invalid-input-secret`, `missing-input-secret`) →
+   fail **open**, `console.error` loudly. The visitor already solved a real
+   challenge; a rejection here is *our* misconfiguration, not theirs.
+4. Unreachable / non-2xx / unparseable → fail open as before.
+
+**Fail-open-on-wrong-secret is only sanctioned because `/__health` exists.**
+A `GET /__health` route probes the deployed secret directly, using
+Cloudflare's own published always-fails dummy token
+(`2x0000000000000000000000000000000AA` — provided specifically for this kind
+of health check), and reads the same `error-codes` distinction: a
+secret-side code means `{gate: "degraded", reason: "secret"}` (503); anything
+else means the secret is fine (`{gate: "ok"}`, 200), and an unreachable
+siteverify call deliberately still reports 200 (`reason: "unreachable"`) so a
+transient blip never trips a deploy gate or alarm — only a persistent,
+actionable secret problem does. This is the check that would have caught the
+2026-07-06 incident: a bogus-token POST to `/__verify` passes identically
+whether the secret is right or wrong (Cloudflare rejects a malformed token
+either way), so it was never capable of catching that class of bug.
+`scripts/verify.sh` and `scripts/deploy.sh`'s secret-heal step both use it now.
+
+**Residual gap `/__health` cannot catch**: if the sitekey and the secret are
+each individually valid but belong to *two different* widgets, a real
+visitor's token verifies as an ordinary `invalid-input-response` —
+indistinguishable from a normal bad token — and `/__health` reports `ok`.
+The only automated defense against this is treating sitekey+secret as one
+atomic pair sourced together from the same widget (fetched via
+`GET /accounts/{account}/challenges/widgets/{sitekey}`, which returns the
+secret in plaintext — the same call used to fix the 2026-07-06 incident).
+Beyond that, a real human in a real browser remains the only way to prove
+this end-to-end, since Turnstile refuses to resolve for headless/automated
+browsers by design (see docs/MAINTENANCE.md#testing-the-real-challenge).
+
+## Why the Cicada CI/CD manifest isn't fully trusted yet
+
+`.bifrost/deploy-manifest.json` declares `nervous-system-states` as a
+`cf-worker` target so pushes to `main` can, in principle, deploy through
+`cicd-intake → cicd-queue → ephemeral Sprite` instead of a manual
+`scripts/deploy.sh` run. As of the 2026-07-06 onboarding this has never been
+proven end-to-end: no push has yet gone through the pipeline for this repo,
+and this repo's layout (`worker/` singular, no build step, no
+`package.json` in that directory — deploy is just `wrangler deploy` from
+source) differs from other onboarded repos, which live under
+`workers/<name>/` with an npm build step. A generic executor that uploads
+`artifact.bundle_path` directly, without honoring `worker/wrangler.toml`'s
+`run_worker_first`, the `challenge.html` text-import rule, and the
+custom-domain route, could produce a Worker that serves 200 at `/` while the
+gate is silently bypassed — exactly the quirk documented in
+docs/MAINTENANCE.md. Until a deliberate no-op push has been proven to deploy
+correctly through the pipeline (matching a manual `scripts/deploy.sh` run —
+same bindings, routes, secrets present, `/__health` reporting `ok`),
+`scripts/deploy.sh` remains the trusted, authoritative deploy path. Note
+also that Cicada's `rollback_strategy: "previous-version"` restores *code*,
+not *secrets* — a `/__health` 503 caused by a wrong secret cannot be fixed by
+rolling back a version; only `scripts/deploy.sh`'s converge-secret step does.
+
 ## Why a hand-rolled HMAC cookie instead of KV-backed sessions
 
 VeilGate (this account's other auth gateway, for `portal.mock1ngbb.com` and

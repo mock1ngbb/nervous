@@ -143,13 +143,24 @@ permission and isn't Chrome. It will *not* pass the actual Turnstile challenge
   keeps returning a clean 200. This happened live on 2026-07-03→06 when the
   vendored siteverify Worker was deleted from the account (see "Why we no
   longer run a separate siteverify Worker" in [DECISIONS.md](DECISIONS.md)).
-  `scripts/verify.sh` step 3/3 is the fast way to tell: 403 on a bogus token
-  means the gate is healthy; **200 now means fail-open has engaged** (see
-  "Why `handleVerify` fails open" in DECISIONS.md) — that's not a silent pass,
-  it means siteverify itself needs attention. Check the Worker's Observability
-  logs (enabled in `worker/wrangler.toml`) for a `siteverify unreachable` or
-  `siteverify returned an unexpected shape` line to confirm.
+  `scripts/verify.sh` step 3/3 checks `GET /__health` for this now (see
+  below) rather than a bogus-token POST — a bogus token passes identically
+  whether the gate is healthy or completely misconfigured, so it was never
+  the right signal to check.
 - **A Turnstile token is single-use.** `worker/src/challenge.html`'s
   `onTsSuccess` must call `turnstile.reset()` (not just retry the same fetch)
   on any failure — reusing a spent token will only ever fail again. This is
   why the retry logic there is `reset()` + backoff, not a bare fetch retry.
+- **An HTTP status code alone cannot tell "wrong secret" apart from
+  "correctly rejected a bad token."** POSTing a bogus token to `/__verify`
+  gets a 403 (or a fail-open 200) *regardless* of whether
+  `TURNSTILE_SECRET_KEY` is right — Cloudflare's siteverify returns
+  `success: false` for a malformed token either way. The only signal that can
+  actually discriminate the two is the `error-codes` array in siteverify's
+  response (`invalid-input-secret`/`missing-input-secret` vs. everything
+  else), which is why `GET /__health` exists as a dedicated endpoint (see
+  "Why handleVerify is four-way, not three" in [DECISIONS.md](DECISIONS.md))
+  — it's the only automated check that would have caught the 2026-07-06
+  wrong-secret incident. Any future health/smoke check added to this repo
+  should read `/__health`'s `gate`/`reason` fields, not infer correctness
+  from an HTTP status code on `/__verify`.

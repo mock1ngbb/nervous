@@ -1,9 +1,12 @@
 import CHALLENGE_HTML_TEMPLATE from "./challenge.html";
 
 // See docs/ARCHITECTURE.md for the full request-flow diagram and
-// docs/DECISIONS.md for why each of these choices was made.
-
-const SITEVERIFY_WORKER = "https://turnstile-siteverify-nervous.mock1ng.workers.dev/";
+// docs/DECISIONS.md for why each of these choices was made — including why
+// this Worker calls Cloudflare's siteverify endpoint directly instead of
+// through vendor/turnstile-siteverify (kept in the repo as reference only;
+// no longer a runtime dependency — see "Why we no longer run a separate
+// siteverify Worker" in DECISIONS.md).
+const CF_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const SITEKEY = "0x4AAAAAADtrRqqg8PPu3Edz";
 const COOKIE_NAME = "ns_verified";
 const COOKIE_TTL = 60 * 60 * 12; // 12h
@@ -52,19 +55,47 @@ async function handleVerify(request, env) {
     });
   }
 
-  const vr = await fetch(SITEVERIFY_WORKER, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token }),
-  });
-  const vjson = await vr.json();
-  if (!vjson.success) {
+  // Three-way outcome, deliberately distinct from a plain try/catch around
+  // everything: an affirmative "token is bad" from Cloudflare must stay
+  // fail-closed (403), but Cloudflare being unreachable or returning
+  // something unparseable must fail OPEN, not throw a 500. Rationale: the
+  // client already solved the invisible challenge before this call ever
+  // fires, so fail-open here means "trust the token the widget already
+  // vetted when we can't double-check it," not "let anyone in" — and this
+  // page's bot-abuse value is near zero, so a degraded-gate window during a
+  // Cloudflare-side or network blip is far lower cost than silently
+  // stranding a real visitor on the challenge shell forever (the incident
+  // this replaced: vendor/turnstile-siteverify disappeared from the account
+  // and every verify call 500'd — see DECISIONS.md).
+  let vjson;
+  try {
+    const vr = await fetch(CF_SITEVERIFY_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ secret: env.TURNSTILE_SECRET_KEY, response: token }),
+    });
+    if (!vr.ok) throw new Error(`siteverify HTTP ${vr.status}`);
+    vjson = await vr.json();
+  } catch (err) {
+    console.error("siteverify unreachable, failing open", { error: String(err) });
+    return issueVerifiedCookie(env);
+  }
+
+  if (vjson.success === false) {
     return new Response(JSON.stringify({ success: false }), {
       status: 403,
       headers: { "content-type": "application/json" },
     });
   }
+  if (vjson.success !== true) {
+    console.error("siteverify returned an unexpected shape, failing open", { vjson });
+    return issueVerifiedCookie(env);
+  }
 
+  return issueVerifiedCookie(env);
+}
+
+async function issueVerifiedCookie(env) {
   const ts = Math.floor(Date.now() / 1000).toString();
   const sig = await sign(ts, env.COOKIE_SECRET);
   const cookieVal = encodeURIComponent(`${ts}.${sig}`);

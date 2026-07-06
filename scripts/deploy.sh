@@ -42,4 +42,24 @@ else
 fi
 
 echo
+echo "==> Checking TURNSTILE_SECRET_KEY"
+# The Worker calls Cloudflare's siteverify endpoint directly (see
+# DECISIONS.md) and needs its own copy of the Turnstile widget secret. Unlike
+# COOKIE_SECRET, this can't be freshly generated — it's re-sourced from `bf`,
+# which is the durable copy (never written to disk in this repo). If a
+# future deploy target is missing it, this heals it the same idempotent way
+# COOKIE_SECRET heals above, instead of requiring a manual, easy-to-forget
+# step — this exact gap (a Worker missing its Turnstile secret with no
+# scripted recovery) contributed to the 2026-07 outage.
+has_ts_secret=$(cd worker && npx wrangler secret list --name "$WORKER_NAME" 2>/dev/null \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if any(s['name']=='TURNSTILE_SECRET_KEY' for s in d) else 'no')" 2>/dev/null || echo "no")
+
+if [ "$has_ts_secret" = "yes" ]; then
+  echo "    TURNSTILE_SECRET_KEY already set — leaving it alone."
+else
+  echo "    TURNSTILE_SECRET_KEY missing — re-sourcing from bf and setting it now."
+  cf_token TURNSTILE_SECRET_KEY | (cd worker && npx wrangler secret put TURNSTILE_SECRET_KEY --name "$WORKER_NAME")
+fi
+
+echo
 echo "==> Done. Verify with: scripts/verify.sh"

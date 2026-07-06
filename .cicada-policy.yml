@@ -1,0 +1,10 @@
+# Cicada policy — nervous
+# Schema: https://github.com/mockingb1rdblue/bifrost-bridge/blob/hee-haw/schemas/cicada-policy.schema.json
+# Contract: bifrost-bridge docs/constitutions/cicd/contract-cicada-policy.md
+version: 1
+cicd_target: charon-cicada
+github_actions: forbidden
+lfs_backend: none
+manifest: required
+policy_owner: mock1ngbb
+last_verified: '2026-07-06'

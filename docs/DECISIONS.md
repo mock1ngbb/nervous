@@ -117,28 +117,51 @@ Beyond that, a real human in a real browser remains the only way to prove
 this end-to-end, since Turnstile refuses to resolve for headless/automated
 browsers by design (see docs/MAINTENANCE.md#testing-the-real-challenge).
 
-## Why the Cicada CI/CD manifest isn't fully trusted yet
+## Why the Cicada CI/CD pipeline is NOT the deploy path for this repo
 
 `.bifrost/deploy-manifest.json` declares `nervous-system-states` as a
-`cf-worker` target so pushes to `main` can, in principle, deploy through
+`cf-worker` target so pushes to `main` could, in principle, deploy through
 `cicd-intake → cicd-queue → ephemeral Sprite` instead of a manual
-`scripts/deploy.sh` run. As of the 2026-07-06 onboarding this has never been
-proven end-to-end: no push has yet gone through the pipeline for this repo,
-and this repo's layout (`worker/` singular, no build step, no
+`scripts/deploy.sh` run. **This was tested empirically on 2026-07-06 and
+confirmed NOT to work for this repo.**
+
+Test method: three real pushes to `main` (PR #4, #5, and a dedicated no-op
+PR #6 whose only change was a comment in `worker/src/index.js`, matching the
+manifest's `watch_paths`). Each one's GitHub webhook delivery to
+`https://cicd-intake.mock1ng.workers.dev/v1/intake/github-push` was confirmed
+`200 OK` within seconds (`gh api repos/mock1ngbb/nervous/hooks/650013158/deliveries`).
+But polling the Cloudflare API
+(`GET /accounts/{account}/workers/scripts/nervous-system-states/deployments`)
+for over 6 minutes after the no-op PR #6 merge produced **zero new
+deployments** — the most recent deployment stayed pinned to the last manual
+`scripts/deploy.sh` run (`author_email: mock1ng@pm.me`, `triggered_by:
+"deployment"`), never anything attributable to the pipeline.
+
+Conclusion: `cicd-intake` accepts this repo's webhook traffic (the
+registration in VaultKeeper and `.bifrost/deploy-manifest.json` are at least
+*readable*), but no observed push has ever produced an actual Cloudflare
+deployment. The most likely cause, matching the concern raised at onboarding
+time: this repo's layout (`worker/` singular, no build step, no
 `package.json` in that directory — deploy is just `wrangler deploy` from
-source) differs from other onboarded repos, which live under
-`workers/<name>/` with an npm build step. A generic executor that uploads
-`artifact.bundle_path` directly, without honoring `worker/wrangler.toml`'s
-`run_worker_first`, the `challenge.html` text-import rule, and the
-custom-domain route, could produce a Worker that serves 200 at `/` while the
-gate is silently bypassed — exactly the quirk documented in
-docs/MAINTENANCE.md. Until a deliberate no-op push has been proven to deploy
-correctly through the pipeline (matching a manual `scripts/deploy.sh` run —
-same bindings, routes, secrets present, `/__health` reporting `ok`),
-`scripts/deploy.sh` remains the trusted, authoritative deploy path. Note
-also that Cicada's `rollback_strategy: "previous-version"` restores *code*,
-not *secrets* — a `/__health` 503 caused by a wrong secret cannot be fixed by
-rolling back a version; only `scripts/deploy.sh`'s converge-secret step does.
+source honoring `worker/wrangler.toml`'s `run_worker_first`, the
+`challenge.html` text-import rule, and the custom-domain route) doesn't match
+the shape other onboarded repos have (`workers/<name>/` with an npm build
+step producing a `dist/index.js` artifact), and the generic `cf-worker`
+executor may be silently no-op'ing, failing before upload, or failing in a
+way with no visibility from outside `cicd-queue` (no working annals-events
+endpoint was found to inspect internal pipeline logs from this repo's side).
+
+**`scripts/deploy.sh` remains the sole, trusted, authoritative deploy path
+for this repo — this is not a "not yet proven" caveat anymore, it's a
+confirmed-broken integration.** Do not flip any assumption (rollback
+strategy, health-gate trust, alerting) to depend on the Cicada pipeline
+actually deploying this repo until someone with `cicd-queue` log/DO access
+diagnoses why the executor isn't producing a deployment, or the manifest is
+changed to `platform: "script"` invoking `scripts/deploy.sh` directly (the
+one alternative this repo could self-verify, blocked on whether the Sprite
+execution environment has working `bf`/BIFROST_KV credential access —
+unconfirmed). Cicada's `rollback_strategy: "previous-version"` restoring
+*code* but not *secrets* is moot until the pipeline deploys at all.
 
 ## Why a hand-rolled HMAC cookie instead of KV-backed sessions
 

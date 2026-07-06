@@ -18,7 +18,33 @@
   no visible challenge for legitimate visitors. See docs/DECISIONS.md.
 -->
 <div class="cf-turnstile" data-sitekey="__SITEKEY__" data-action="turnstile-spin-v1" data-callback="onTsSuccess" data-error-callback="onTsError" style="display:none"></div>
+<div id="ns-fallback" style="display:none;color:#8a8a92;font:13px sans-serif;padding:2em;text-align:center">Still connecting&hellip;</div>
 <script>
+// Shared retry state for both the verify-call failure path (onTsSuccess) and
+// the widget-error path (onTsError). A Turnstile token is single-use, so any
+// failure past this point means the spent token must be discarded and a
+// fresh one obtained via turnstile.reset() — retrying with the same token
+// would only ever fail again. Capped exponential backoff, with an eventual
+// small status line after a sustained failure window: happy-path stays
+// silent for real visitors (who resolve in ~1-2s), but a prolonged outage no
+// longer looks like a page that "doesn't load" with no explanation.
+var RETRY_DELAYS = [1000, 2000, 4000, 8000, 8000, 8000];
+var retryAttempt = 0;
+var startedAt = Date.now();
+var FALLBACK_AFTER_MS = 15000;
+
+function scheduleRetry() {
+  if (Date.now() - startedAt > FALLBACK_AFTER_MS) {
+    var el = document.getElementById("ns-fallback");
+    if (el) el.style.display = "block";
+  }
+  var delay = RETRY_DELAYS[Math.min(retryAttempt, RETRY_DELAYS.length - 1)];
+  retryAttempt += 1;
+  setTimeout(function () {
+    if (window.turnstile) window.turnstile.reset();
+  }, delay);
+}
+
 function onTsSuccess(token) {
   fetch("/__verify", {
     method: "POST",
@@ -26,15 +52,19 @@ function onTsSuccess(token) {
     body: JSON.stringify({ token: token }),
   })
     .then(function (r) { return r.json(); })
-    .then(function (d) { if (d.success) { location.reload(); } });
+    .then(function (d) {
+      if (d && d.success) {
+        location.reload();
+      } else {
+        scheduleRetry();
+      }
+    })
+    .catch(function () {
+      scheduleRetry();
+    });
 }
 function onTsError() {
-  // Quietly retry. Real visitors resolve within ~1-2s; this never surfaces
-  // any UI, so a slow retry loop costs nothing visible. Bots/headless
-  // browsers that can't solve it just never get past this page.
-  setTimeout(function () {
-    if (window.turnstile) window.turnstile.reset();
-  }, 1000);
+  scheduleRetry();
 }
 </script>
 </body>

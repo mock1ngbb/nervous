@@ -116,3 +116,22 @@ permission and isn't Chrome. It will *not* pass the actual Turnstile challenge
   `*.cloudflareaccess.com` on first request, check for a wildcard Access app on
   the account before assuming something in this repo is misconfigured — see
   [DECISIONS.md](DECISIONS.md).
+- **`/` returning 200 does not mean the gate is working.** If the siteverify
+  backend is absent or unreachable, `/__verify` 500s (Cloudflare edge error
+  1101), the invisible-widget page never gets its `ns_verified` cookie, and a
+  real visitor is stuck on the challenge shell (background `#0A0A0B`, no
+  visible content) *indefinitely* — which looks exactly like "the page
+  doesn't load," even though every plain `curl https://nervous.mock1ngbb.com/`
+  keeps returning a clean 200. This happened live on 2026-07-03→06 when the
+  vendored siteverify Worker was deleted from the account (see "Why we no
+  longer run a separate siteverify Worker" in [DECISIONS.md](DECISIONS.md)).
+  `scripts/verify.sh` step 3/3 is the fast way to tell: 403 on a bogus token
+  means the gate is healthy; **200 now means fail-open has engaged** (see
+  "Why `handleVerify` fails open" in DECISIONS.md) — that's not a silent pass,
+  it means siteverify itself needs attention. Check the Worker's Observability
+  logs (enabled in `worker/wrangler.toml`) for a `siteverify unreachable` or
+  `siteverify returned an unexpected shape` line to confirm.
+- **A Turnstile token is single-use.** `worker/src/challenge.html`'s
+  `onTsSuccess` must call `turnstile.reset()` (not just retry the same fetch)
+  on any failure — reusing a spent token will only ever fail again. This is
+  why the retry logic there is `reset()` + backoff, not a bare fetch retry.

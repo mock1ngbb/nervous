@@ -22,3 +22,11 @@ binding = "ASSETS"
 # during setup: the real page was served to a cookie-less request with none
 # of this Worker's response headers present. See docs/MAINTENANCE.md#known-quirks.
 run_worker_first = true
+
+# Without this, the verify-round-trip 500 that caused the 2026-07 outage
+# (siteverify sidecar Worker had vanished from the account) would have been
+# invisible server-side — no logs to check, just an opaque edge error page.
+# See docs/MAINTENANCE.md#known-quirks and the fail-open handling in
+# src/index.js's handleVerify().
+[observability]
+enabled = true

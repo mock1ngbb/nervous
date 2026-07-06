@@ -5,7 +5,11 @@
 #   2. The Worker responds 200 with the challenge shell for an
 #      unauthenticated request.
 #   3. /__verify correctly rejects a bogus token (403), proving the
-#      siteverify round-trip is wired up.
+#      siteverify round-trip is wired up. A 200 here does NOT mean the site
+#      is broken — handleVerify fails OPEN when Cloudflare's siteverify is
+#      unreachable (see DECISIONS.md), so a 200-on-bogus-token means the
+#      gate is running in a degraded fail-open state and siteverify itself
+#      needs attention, not that the token was wrongly accepted.
 #
 # What this CANNOT check: a real human passing the invisible Turnstile
 # challenge — that requires a genuine (non-headless) browser, since
@@ -51,9 +55,16 @@ echo "==> [3/3] Checking /__verify rejects a bogus token"
 verify_code=$(curl -sS -A "$UA" -o /dev/null -w "%{http_code}" -X POST \
   "https://$DOMAIN/__verify" -H "content-type: application/json" -d '{"token":"bogus"}')
 if [ "$verify_code" = "403" ]; then
-  echo "    OK (403 as expected)"
+  echo "    OK (403 as expected — siteverify reachable, bogus token rejected)"
+elif [ "$verify_code" = "200" ]; then
+  echo "    DEGRADED: got 200, not 403 — handleVerify's fail-open path engaged,"
+  echo "    meaning Cloudflare's siteverify is unreachable/erroring right now."
+  echo "    Real visitors are unaffected (they're being let through), but this"
+  echo "    needs attention: check the Worker's Observability logs for the"
+  echo "    'siteverify unreachable' / 'unexpected shape' log line."
+  fail=1
 else
-  echo "    FAIL: expected 403, got $verify_code"
+  echo "    FAIL: expected 403 (or degraded 200), got $verify_code"
   fail=1
 fi
 

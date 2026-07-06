@@ -10,6 +10,11 @@ const CF_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteve
 const SITEKEY = "0x4AAAAAADtrRqqg8PPu3Edz";
 const COOKIE_NAME = "ns_verified";
 const COOKIE_TTL = 60 * 60 * 12; // 12h
+// Cloudflare's own published always-fails dummy token (documented for
+// exactly this kind of secret-health probe — a real secret always rejects
+// it with error-code "invalid-input-response", never "invalid-input-secret").
+const DUMMY_TOKEN = "2x0000000000000000000000000000000AA";
+let cachedHealth = null; // { at: epoch-seconds, body: {...} } — see handleHealth
 
 const CHALLENGE_HTML = CHALLENGE_HTML_TEMPLATE.replace("__SITEKEY__", SITEKEY);
 
@@ -40,6 +45,25 @@ async function isVerified(cookieHeader, secret) {
   return expected === sig;
 }
 
+// Cloudflare's error-codes array is the ONE signal that can distinguish
+// "the token was bad" from "our own secret is wrong" — an HTTP status alone
+// (what scripts/verify.sh checked before) cannot, since both cases can
+// surface as a plain success:false. See "Why handleVerify is four-way, not
+// three" in DECISIONS.md.
+const SECRET_SIDE_CODES = new Set(["missing-input-secret", "invalid-input-secret"]);
+
+async function callSiteverify(secret, token) {
+  const vr = await fetch(CF_SITEVERIFY_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ secret, response: token }),
+  });
+  if (!vr.ok) throw new Error(`siteverify HTTP ${vr.status}`);
+  const vjson = await vr.json();
+  if (typeof vjson.success !== "boolean") throw new Error("siteverify returned an unexpected shape");
+  return vjson;
+}
+
 async function handleVerify(request, env) {
   let body;
   try {
@@ -55,44 +79,79 @@ async function handleVerify(request, env) {
     });
   }
 
-  // Three-way outcome, deliberately distinct from a plain try/catch around
-  // everything: an affirmative "token is bad" from Cloudflare must stay
-  // fail-closed (403), but Cloudflare being unreachable or returning
-  // something unparseable must fail OPEN, not throw a 500. Rationale: the
+  // Four-way outcome, deliberately distinct from a bare try/catch: the
   // client already solved the invisible challenge before this call ever
-  // fires, so fail-open here means "trust the token the widget already
-  // vetted when we can't double-check it," not "let anyone in" — and this
-  // page's bot-abuse value is near zero, so a degraded-gate window during a
-  // Cloudflare-side or network blip is far lower cost than silently
-  // stranding a real visitor on the challenge shell forever (the incident
-  // this replaced: vendor/turnstile-siteverify disappeared from the account
-  // and every verify call 500'd — see DECISIONS.md).
+  // fires, so ANY rejection that isn't "the token itself was bad" is OUR
+  // misconfiguration, not the visitor's fault, and must fail OPEN rather
+  // than strand them — this is what replaced the incident where
+  // vendor/turnstile-siteverify disappeared from the account and every
+  // verify call 500'd. Fail-open-on-wrong-secret is only safe because a
+  // scheduled /__health probe (see handleHealth below) surfaces that
+  // degraded state to a human within minutes instead of it going unnoticed —
+  // that alarm is a hard dependency of this trade, not optional polish.
   let vjson;
   try {
-    const vr = await fetch(CF_SITEVERIFY_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ secret: env.TURNSTILE_SECRET_KEY, response: token }),
-    });
-    if (!vr.ok) throw new Error(`siteverify HTTP ${vr.status}`);
-    vjson = await vr.json();
+    vjson = await callSiteverify(env.TURNSTILE_SECRET_KEY, token);
   } catch (err) {
     console.error("siteverify unreachable, failing open", { error: String(err) });
     return issueVerifiedCookie(env);
   }
 
-  if (vjson.success === false) {
-    return new Response(JSON.stringify({ success: false }), {
-      status: 403,
-      headers: { "content-type": "application/json" },
-    });
-  }
-  if (vjson.success !== true) {
-    console.error("siteverify returned an unexpected shape, failing open", { vjson });
+  if (vjson.success === true) {
     return issueVerifiedCookie(env);
   }
 
-  return issueVerifiedCookie(env);
+  const codes = Array.isArray(vjson["error-codes"]) ? vjson["error-codes"] : [];
+  if (codes.some((c) => SECRET_SIDE_CODES.has(c))) {
+    console.error("siteverify rejected our own secret — gate misconfigured, failing open", { codes });
+    return issueVerifiedCookie(env);
+  }
+
+  // Token-side rejection (invalid-input-response, timeout-or-duplicate,
+  // missing-input-response, bad-request, ...) — the token itself was bad.
+  // Fail closed; this is the only case that should ever land here.
+  return new Response(JSON.stringify({ success: false, reason: "token" }), {
+    status: 403,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+// GET-only, cookie-free health probe: answers "does this Worker currently
+// hold a secret that Cloudflare's siteverify actually accepts?" — the exact
+// question a bogus-token POST to /__verify cannot answer, since Cloudflare
+// rejects a bogus token identically whether the secret is right or wrong.
+// Uses Cloudflare's own published always-fails dummy token, so this never
+// consumes a real visitor's token and needs no browser. Cached briefly since
+// the answer only changes on redeploy/secret rotation, not per-request.
+const HEALTH_CACHE_TTL_SECONDS = 45;
+
+async function handleHealth(env) {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedHealth && now - cachedHealth.at < HEALTH_CACHE_TTL_SECONDS) {
+    return Response.json(cachedHealth.body, { status: cachedHealth.status });
+  }
+
+  let result;
+  try {
+    const vjson = await callSiteverify(env.TURNSTILE_SECRET_KEY, DUMMY_TOKEN);
+    const codes = Array.isArray(vjson["error-codes"]) ? vjson["error-codes"] : [];
+    if (codes.some((c) => SECRET_SIDE_CODES.has(c))) {
+      result = { status: 503, body: { gate: "degraded", reason: "secret" } };
+    } else {
+      // vjson.success should be false here (it's a dummy token) with a
+      // token-side code — that's the healthy state: our secret is fine,
+      // Cloudflare correctly rejected the dummy token on its own merits.
+      result = { status: 200, body: { gate: "ok" } };
+    }
+  } catch (err) {
+    // Deliberately 200, not 503: a transient Cloudflare/network blip must
+    // never trip a deploy gate or page alarm — only a persistent, actionable
+    // secret misconfiguration should. See DECISIONS.md.
+    result = { status: 200, body: { gate: "degraded", reason: "unreachable" } };
+  }
+
+  cachedHealth = { at: now, status: result.status, body: result.body };
+  return Response.json(result.body, { status: result.status });
 }
 
 async function issueVerifiedCookie(env) {
@@ -114,6 +173,9 @@ export default {
 
     if (url.pathname === "/__verify" && request.method === "POST") {
       return handleVerify(request, env);
+    }
+    if (url.pathname === "/__health" && request.method === "GET") {
+      return handleHealth(env);
     }
 
     const verified = await isVerified(request.headers.get("Cookie"), env.COOKIE_SECRET);

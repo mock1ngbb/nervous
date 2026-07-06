@@ -27,3 +27,28 @@ cf_token() {
   require_bf
   bf get "$1"
 }
+
+# secret_state <worker-dir> <worker-name> <secret-name> -> present|absent|indeterminate
+# `wrangler secret list` failing (network blip, malformed JSON, auth hiccup)
+# must NEVER be treated as "absent" — that would make a transient error
+# silently trigger regeneration of a secret that's actually fine and still
+# live (e.g. COOKIE_SECRET), invalidating every visitor's session for no
+# reason. Callers must abort on "indeterminate", not fall through to heal.
+secret_state() {
+  local worker_dir="$1" worker_name="$2" secret_name="$3"
+  local raw
+  if raw=$(cd "$worker_dir" && npx wrangler secret list --name "$worker_name" 2>/dev/null); then
+    echo "$raw" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('indeterminate')
+    sys.exit()
+name = sys.argv[1]
+print('present' if any(s.get('name') == name for s in d) else 'absent')
+" "$secret_name"
+  else
+    echo "indeterminate"
+  fi
+}

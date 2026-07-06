@@ -23,6 +23,24 @@ token is missing or broken — this account's tokens are split narrowly by purpo
 and the fix is almost always "use the more specific token," not "get a new token."
 Check `docs/MAINTENANCE.md#secrets` above before concluding anything is missing.
 
+**`bf`/BIFROST_KV is a flat, non-namespaced key store shared across every
+project on this machine.** `TURNSTILE_SECRET_KEY` is a generic enough name that
+another project's Turnstile widget secret (a shared widget called "bifrost
+veilgate," used by `suno-forge`/`forge-anvil` and several `*.mock1ngbb.com`
+subdomains) had already claimed it. This repo's own setup script
+(`setup-turnstile.sh`) deliberately never writes the widget secret to `bf` — so
+this repo's `bf get TURNSTILE_SECRET_KEY` was silently reading a *different
+project's* secret the whole time, not a stale copy of its own. Confirmed live
+2026-07-06: a script-level "heal" that pulled from that generic name deployed
+the wrong secret, and it looked completely healthy (`scripts/verify.sh` still
+passed, since a bogus-token 403 doesn't distinguish "wrong secret" from
+"secret correctly rejected a bad token") — only a real, non-automated browser
+surfaced it. Fix: this repo's actual secret lives under **`NERVOUS_TURNSTILE_SECRET_KEY`**
+in `bf` (project-prefixed, not the generic name), which is what
+`scripts/deploy.sh`'s heal-check reads. **Never reuse the bare
+`TURNSTILE_SECRET_KEY` name for this repo's own secret again** — that name
+belongs to the shared veilgate widget, not to `nervous`.
+
 ## Rotating `COOKIE_SECRET`
 
 Rotating it immediately invalidates every visitor's current `ns_verified` cookie —
@@ -125,34 +143,36 @@ permission and isn't Chrome. It will *not* pass the actual Turnstile challenge
   keeps returning a clean 200. This happened live on 2026-07-03→06 when the
   vendored siteverify Worker was deleted from the account (see "Why we no
   longer run a separate siteverify Worker" in [DECISIONS.md](DECISIONS.md)).
-  `scripts/verify.sh` step 3/3 is the fast way to tell: 403 on a bogus token
-  means the gate is healthy; **200 now means fail-open has engaged** (see
-  "Why `handleVerify` fails open" in DECISIONS.md) — that's not a silent pass,
-  it means siteverify itself needs attention. Check the Worker's Observability
-  logs (enabled in `worker/wrangler.toml`) for a `siteverify unreachable` or
-  `siteverify returned an unexpected shape` line to confirm.
+  `scripts/verify.sh` step 3/3 checks `GET /__health` for this now (see
+  below) rather than a bogus-token POST — a bogus token passes identically
+  whether the gate is healthy or completely misconfigured, so it was never
+  the right signal to check.
 - **A Turnstile token is single-use.** `worker/src/challenge.html`'s
   `onTsSuccess` must call `turnstile.reset()` (not just retry the same fetch)
   on any failure — reusing a spent token will only ever fail again. This is
   why the retry logic there is `reset()` + backoff, not a bare fetch retry.
-- **`scripts/verify.sh`'s bogus-token check proves siteverify is *reachable*,
-  not that `TURNSTILE_SECRET_KEY` is *correct*.** Cloudflare's siteverify
-  endpoint returns `success: false` (→ our 403) for a malformed/bogus token
-  regardless of whether the secret matches the sitekey — so a passing
-  `verify.sh` run can still mean real visitors are being rejected if the
-  secret itself is wrong. This happened immediately after the 2026-07-06
-  siteverify collapse: the `TURNSTILE_SECRET_KEY` value that had been sitting
-  in `bf` (Bifrost secrets) did not match the widget's actual live secret
-  (different value entirely — confirmed by fetching the widget's config
-  directly, `GET /accounts/{account}/challenges/widgets/{sitekey}`, which
-  returns the secret in plaintext). Every real visitor's genuinely-valid
-  token was rejected with a clean 403, which looks identical to the original
-  black-screen incident from the outside despite being a completely different
-  cause (wrong secret vs. missing backend). **If `verify.sh` passes but a
-  real browser still can't get through, don't trust `bf`'s copy of
-  `TURNSTILE_SECRET_KEY` blindly** — re-fetch it from the live widget config
-  and compare before assuming the secret is correct. There is no automated
-  way to catch this from this repo alone: Turnstile is designed to refuse to
-  resolve for headless/automated test browsers (see "Testing the real
-  challenge" above), so a real, non-automated browser check is the only way
-  to catch a wrong-but-well-formed secret.
+- **An HTTP status code alone cannot tell "wrong secret" apart from
+  "correctly rejected a bad token."** POSTing a bogus token to `/__verify`
+  gets a 403 (or a fail-open 200) *regardless* of whether
+  `TURNSTILE_SECRET_KEY` is right — Cloudflare's siteverify returns
+  `success: false` for a malformed token either way. This bit us directly:
+  right after the 2026-07-06 siteverify collapse, the `TURNSTILE_SECRET_KEY`
+  value sitting in `bf` (Bifrost secrets) did not match the widget's actual
+  live secret (confirmed by fetching the widget's config directly,
+  `GET /accounts/{account}/challenges/widgets/{sitekey}`, which returns the
+  secret in plaintext) — every real visitor's genuinely-valid token was
+  rejected with a clean 403 while `scripts/verify.sh`'s bogus-token check
+  kept passing, since it can't distinguish the two cases. The signal that
+  *can* discriminate them is the `error-codes` array in siteverify's response
+  (`invalid-input-secret`/`missing-input-secret` vs. everything else), which
+  is why `GET /__health` exists as a dedicated endpoint (see "Why handleVerify
+  is four-way, not three" in [DECISIONS.md](DECISIONS.md)) and is what
+  `scripts/verify.sh` now checks instead. Any future health/smoke check added
+  to this repo should read `/__health`'s `gate`/`reason` fields, not infer
+  correctness from an HTTP status code on `/__verify`. The one thing
+  `/__health` still can't catch — a sitekey and secret that are each
+  individually valid but belong to two *different* widgets — is covered by
+  `verify.sh`'s atomic-pair check (step 4); beyond that, a real,
+  non-automated browser remains the only full end-to-end proof (Turnstile
+  refuses to resolve for headless/automated test browsers — see "Testing the
+  real challenge" above).

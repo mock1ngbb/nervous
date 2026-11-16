@@ -23,7 +23,7 @@
       },
       "rollback_strategy": "previous-version",
       "watch_paths": ["worker/**", "site/**"],
-      "deploy_branch": "main",
+      "deploy_branch": "hee-haw",
       "destructive_gate": false,
       "max_deploy_time_seconds": 300,
       "concurrent_deploys": "serial"
